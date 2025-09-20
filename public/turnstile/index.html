@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catraca - Sistema QR Code</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .section { background: white; padding: 30px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .form-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 15px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 16px; }
+        button { background: #007bff; color: white; padding: 15px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 18px; }
+        button:hover { background: #0056b3; }
+        .back-btn { background: #6c757d; margin-bottom: 20px; }
+        .back-btn:hover { background: #545b62; }
+        .result { padding: 30px; border-radius: 10px; margin-top: 20px; font-size: 18px; font-weight: bold; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .scanner-area { border: 2px dashed #ddd; padding: 40px; margin: 20px 0; border-radius: 10px; }
+        .qr-input { font-family: monospace; min-height: 100px; resize: vertical; }
+        .turnstile-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .scan-options { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+        .scan-option { flex: 1; min-width: 200px; }
+        #video { width: 100%; max-width: 400px; border: 2px solid #ddd; border-radius: 10px; }
+        .hidden { display: none; }
+        #fileInput { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button onclick="window.location.href='/'" class="back-btn">← Voltar</button>
+
+        <div class="section">
+            <h1>🚪 Catraca de Acesso</h1>
+            <p>Escaneie ou cole o QR Code para liberar o acesso</p>
+
+            <div class="form-group">
+                <label>Selecionar Catraca:</label>
+                <select id="turnstileSelect" required>
+                    <option value="">Carregando catracas...</option>
+                </select>
+            </div>
+
+            <div class="scanner-area">
+                <div class="scan-options">
+                    <button onclick="showCamera()" class="scan-option">📷 Usar Câmera</button>
+                    <button onclick="showFileUpload()" class="scan-option">📁 Carregar Arquivo</button>
+                    <button onclick="showManualInput()" class="scan-option">✏️ Inserir Manualmente</button>
+                </div>
+                
+                <div id="cameraSection" class="hidden">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas" class="hidden"></canvas>
+                    <div style="margin: 10px 0; text-align: center;">
+                        <p style="color: #666; margin: 10px 0;">Aponte a câmera para o QR Code</p>
+                        <button onclick="stopCamera(); showManualInput();" style="background: #dc3545;">❌ Parar Câmera</button>
+                    </div>
+                </div>
+                
+                <div id="fileSection" class="hidden">
+                    <input type="file" id="fileInput" accept="image/*" onchange="processFile()">
+                    <p>Selecione uma imagem contendo o QR Code (PNG, JPG, etc.)</p>
+                    <div id="fileProgress" class="hidden" style="margin: 10px 0; padding: 10px; background: #e9ecef; border-radius: 5px;">
+                        <div>🔍 Analisando imagem...</div>
+                    </div>
+                </div>
+                
+                <div id="manualSection" class="hidden">
+                    <div class="form-group">
+                        <label>QR Code Token:</label>
+                        <textarea id="qrToken" class="qr-input" placeholder="Cole aqui o token do QR Code"></textarea>
+                    </div>
+                    <button onclick="scanQRCode()" id="scanBtn">🔍 Processar QR Code</button>
+                </div>
+            </div>
+
+            <div id="result"></div>
+        </div>
+
+        <div class="section">
+            <h3>📊 Últimos Acessos</h3>
+            <div id="accessHistory"></div>
+        </div>
+    </div>
+
+    <script>
+        let accessHistory = JSON.parse(localStorage.getItem('accessHistory') || '[]');
+
+        // Obter building ID da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const buildingId = urlParams.get('building');
+        
+        if (!buildingId) {
+            alert('Prédio não especificado');
+            window.location.href = '/';
+        }
+        
+        // Verificar se Turnstile Service está disponível
+        async function checkTurnstileStatus() {
+            try {
+                const response = await fetch('/api/services/status');
+                const services = await response.json();
+                return services.turnstile;
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        // Carregar catracas disponíveis
+        document.addEventListener('DOMContentLoaded', function() {
+            checkTurnstileStatus().then(available => {
+                if (!available) {
+                    document.body.innerHTML = `
+                        <div class="container">
+                            <button onclick="window.location.href='/'" class="back-btn">← Voltar</button>
+                            <div class="section" style="text-align: center; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;">
+                                <h1>⚠️ Serviço Indisponível</h1>
+                                <p>O serviço de Catraca está offline. Não é possível processar QR Codes no momento.</p>
+                                <p>Entre em contato com a administração ou tente novamente mais tarde.</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    loadTurnstiles();
+                    displayAccessHistory();
+                }
+            });
+        });
+
+        async function loadTurnstiles() {
+            const select = document.getElementById('turnstileSelect');
+            
+            try {
+                const response = await fetch(`/api/turnstiles?building=${buildingId}`);
+                const turnstiles = await response.json();
+
+                select.innerHTML = '<option value="">Selecione uma catraca</option>';
+
+                turnstiles.forEach(turnstile => {
+                    const option = document.createElement('option');
+                    option.value = turnstile.id;
+                    option.textContent = turnstile.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                select.innerHTML = '<option value="">⚠️ Erro ao carregar catracas</option>';
+            }
+        }
+
+        async function scanQRCode() {
+            const token = document.getElementById('qrToken').value.trim();
+            const turnstileId = document.getElementById('turnstileSelect').value;
+
+            if (!token) {
+                showResult('Por favor, insira o token do QR Code', 'error');
+                return;
+            }
+
+            if (!turnstileId) {
+                showResult('Por favor, selecione uma catraca', 'error');
+                return;
+            }
+            
+            await processQRToken(token, turnstileId);
+        }
+        
+        async function processQRToken(token, turnstileId) {
+
+            const scanBtn = document.getElementById('scanBtn');
+            if (scanBtn) {
+                scanBtn.disabled = true;
+                scanBtn.textContent = '⏳ Processando...';
+            }
+            
+            showResult('⏳ Processando QR Code...', 'success');
+
+            try {
+                const response = await fetch('/api/turnstile/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, turnstileId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showResult(`✅ ACESSO LIBERADO!<br>
+                        Método: ${result.accessMethod === 'qr_manager' ? 'Online' : 'Offline'}<br>
+                        Horário: ${new Date(result.timestamp).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`, 'success');
+                    
+                    // Adicionar ao histórico
+                    addToHistory({
+                        timestamp: result.timestamp,
+                        status: 'LIBERADO',
+                        method: result.accessMethod
+                    });
+                } else {
+                    showResult(`❌ ACESSO NEGADO!<br>
+                        Motivo: ${result.message}<br>
+                        Horário: ${new Date().toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}`, 'error');
+                    
+                    // Adicionar ao histórico
+                    addToHistory({
+                        timestamp: new Date().toISOString(),
+                        status: 'NEGADO',
+                        reason: result.message
+                    });
+                }
+
+                // Limpar campo
+                document.getElementById('qrToken').value = '';
+
+            } catch (error) {
+                showResult(`❌ ERRO DE CONEXÃO!<br>
+                    Não foi possível processar o QR Code.<br>
+                    Erro: ${error.message}`, 'error');
+            } finally {
+                const scanBtn = document.getElementById('scanBtn');
+                if (scanBtn) {
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = '🔍 Processar QR Code';
+                }
+            }
+        }
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = `result ${type}`;
+        }
+
+        function addToHistory(access) {
+            accessHistory.unshift(access);
+            if (accessHistory.length > 10) {
+                accessHistory = accessHistory.slice(0, 10);
+            }
+            localStorage.setItem('accessHistory', JSON.stringify(accessHistory));
+            displayAccessHistory();
+        }
+
+        function displayAccessHistory() {
+            const historyDiv = document.getElementById('accessHistory');
+            
+            if (accessHistory.length === 0) {
+                historyDiv.innerHTML = '<p style="color: #666;">Nenhum acesso registrado</p>';
+                return;
+            }
+
+            let html = '<div style="text-align: left;">';
+            accessHistory.forEach((access, index) => {
+                const statusColor = access.status === 'LIBERADO' ? '#28a745' : '#dc3545';
+                html += `
+                    <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+                        <div style="font-weight: bold; color: ${statusColor};">${access.status}</div>
+                        <div>Acesso #${accessHistory.length - index}</div>
+                        <div>Horário: ${new Date(access.timestamp).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'})}</div>
+                        ${access.method ? `<div>Método: ${access.method === 'qr_manager' ? 'Online' : 'Offline'}</div>` : ''}
+                        ${access.reason ? `<div>Motivo: ${access.reason}</div>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            historyDiv.innerHTML = html;
+        }
+
+        let stream = null;
+        
+        function showCamera() {
+            hideAllSections();
+            document.getElementById('cameraSection').classList.remove('hidden');
+            startCamera();
+        }
+        
+        function showFileUpload() {
+            hideAllSections();
+            document.getElementById('fileSection').classList.remove('hidden');
+        }
+        
+        function showManualInput() {
+            hideAllSections();
+            document.getElementById('manualSection').classList.remove('hidden');
+        }
+        
+        function hideAllSections() {
+            document.getElementById('cameraSection').classList.add('hidden');
+            document.getElementById('fileSection').classList.add('hidden');
+            document.getElementById('manualSection').classList.add('hidden');
+            stopCamera();
+        }
+        
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                document.getElementById('video').srcObject = stream;
+                
+                // Aguardar vídeo carregar
+                document.getElementById('video').addEventListener('loadedmetadata', () => {
+                    // Processar frames da câmera a cada 500ms
+                    cameraInterval = setInterval(captureFrame, 500);
+                });
+                
+                showResult('📷 Câmera ativa - aponte para o QR Code', 'success');
+            } catch (error) {
+                alert('Erro ao acessar a câmera: ' + error.message);
+                showManualInput();
+            }
+        }
+        
+        function stopCamera() {
+            if (cameraInterval) {
+                clearInterval(cameraInterval);
+                cameraInterval = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+        
+        let cameraInterval = null;
+        
+        function captureFrame() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            
+            if (video.videoWidth === 0) return;
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            
+            if (code) {
+                // QR Code encontrado!
+                clearInterval(cameraInterval);
+                stopCamera();
+                
+                showResult('✅ QR Code detectado pela câmera!', 'success');
+                
+                const turnstileId = document.getElementById('turnstileSelect').value;
+                if (!turnstileId) {
+                    showResult('Por favor, selecione uma catraca primeiro', 'error');
+                    return;
+                }
+                
+                processQRToken(code.data, turnstileId);
+            }
+        }
+        
+        function processFile() {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) return;
+            
+            if (!file.type.startsWith('image/')) {
+                alert('Por favor, selecione um arquivo de imagem');
+                return;
+            }
+            
+            // Mostrar progresso
+            document.getElementById('fileProgress').classList.remove('hidden');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    
+                    // Esconder progresso
+                    document.getElementById('fileProgress').classList.add('hidden');
+                    
+                    if (code) {
+                        // QR Code encontrado!
+                        showResult('✅ QR Code detectado na imagem!', 'success');
+                        
+                        // Processar automaticamente
+                        const turnstileId = document.getElementById('turnstileSelect').value;
+                        if (!turnstileId) {
+                            showResult('Por favor, selecione uma catraca primeiro', 'error');
+                            document.getElementById('fileInput').value = '';
+                            return;
+                        }
+                        
+                        processQRToken(code.data, turnstileId);
+                        document.getElementById('fileInput').value = ''; // Limpar input
+                    } else {
+                        showResult('❌ Não foi possível detectar QR Code na imagem', 'error');
+                        document.getElementById('fileInput').value = '';
+                        setTimeout(() => {
+                            alert('Tente com uma imagem mais nítida ou use a opção manual.');
+                        }, 1000);
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // Mostrar entrada manual por padrão
+        document.addEventListener('DOMContentLoaded', function() {
+            showManualInput();
+        });
+        
+        // Permitir Enter para processar
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                const qrToken = document.getElementById('qrToken');
+                if (qrToken && !qrToken.classList.contains('hidden')) {
+                    scanQRCode();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

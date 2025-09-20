@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Morador - Sistema QR Code</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #1e7e34; }
+        .back-btn { background: #6c757d; margin-bottom: 20px; }
+        .back-btn:hover { background: #545b62; }
+        .hidden { display: none; }
+        .qr-result { text-align: center; padding: 20px; }
+        .qr-code { font-family: monospace; background: #f8f9fa; padding: 15px; border-radius: 5px; word-break: break-all; margin: 20px 0; }
+        .user-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button onclick="window.location.href='/'" class="back-btn">← Voltar</button>
+
+        <!-- Login -->
+        <div id="loginSection" class="section">
+            <h1>Login do Morador</h1>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label>Senha:</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit">Entrar</button>
+            </form>
+        </div>
+
+        <!-- Dashboard do Morador -->
+        <div id="dashboardSection" class="section hidden">
+            <div id="userInfo" class="user-info"></div>
+            
+            <h2>Gerar QR Code para Visitante</h2>
+            <form id="qrForm">
+                <div class="form-group">
+                    <label>Nome do Visitante:</label>
+                    <input type="text" id="guestName" required>
+                </div>
+                <div class="form-group">
+                    <label>Catraca:</label>
+                    <select id="turnstileSelect" required>
+                        <option value="">Carregando catracas...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Data/Hora de Início:</label>
+                    <input type="datetime-local" id="windowStart" required>
+                </div>
+                <div class="form-group">
+                    <label>Data/Hora de Fim:</label>
+                    <input type="datetime-local" id="windowEnd" required>
+                </div>
+                <div class="form-group">
+                    <label>Máximo de Usos:</label>
+                    <input type="number" id="maxUses" value="1" min="1" max="10" required>
+                </div>
+                <button type="submit" id="generateBtn">Gerar QR Code</button>
+            </form>
+
+            <div id="qrResult" class="qr-result hidden">
+                <h3>QR Code Gerado!</h3>
+                <div>Visitante: <span id="guestName"></span></div>
+                <div>Válido até: <span id="expiresAt"></span></div>
+                <div style="margin: 20px 0;">
+                    <img id="qrImage" style="max-width: 300px; border: 1px solid #ddd; border-radius: 10px;" />
+                </div>
+                <button onclick="downloadQRCode()">📥 Baixar QR Code</button>
+            </div>
+
+            <button onclick="logout()" style="background: #dc3545; margin-top: 20px;">Sair</button>
+        </div>
+    </div>
+
+    <script>
+        let authToken = localStorage.getItem('authToken');
+        let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+
+        // Obter building ID da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const buildingId = urlParams.get('building');
+        
+        if (!buildingId) {
+            alert('Prédio não especificado');
+            window.location.href = '/';
+        }
+        
+        // Verificar se QR Manager está disponível
+        async function checkQRManagerStatus() {
+            try {
+                const response = await fetch('/api/services/status');
+                const services = await response.json();
+                return services.qrManager;
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        // Verificar se já está logado
+        if (authToken) {
+            checkQRManagerStatus().then(available => {
+                if (!available) {
+                    document.body.innerHTML = `
+                        <div class="container">
+                            <button onclick="window.location.href='/'" class="back-btn">← Voltar</button>
+                            <div class="section" style="text-align: center; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;">
+                                <h1>⚠️ Serviço Indisponível</h1>
+                                <p>O QR Manager está offline. Não é possível gerar QR Codes no momento.</p>
+                                <p>Entre em contato com a administração ou tente novamente mais tarde.</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    showDashboard();
+                }
+            });
+        } else {
+            checkQRManagerStatus().then(available => {
+                if (!available) {
+                    document.body.innerHTML = `
+                        <div class="container">
+                            <button onclick="window.location.href='/'" class="back-btn">← Voltar</button>
+                            <div class="section" style="text-align: center; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;">
+                                <h1>⚠️ Serviço Indisponível</h1>
+                                <p>O QR Manager está offline. Não é possível gerar QR Codes no momento.</p>
+                                <p>Entre em contato com a administração ou tente novamente mais tarde.</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+        }
+        
+        // Definir horários padrão no timezone do Brasil
+        document.addEventListener('DOMContentLoaded', function() {
+            const now = new Date(Date.now() - 3*60*60*1000);
+            const start = new Date(now.getTime() + 60*60*1000); // +1h
+            const end = new Date(now.getTime() + 3*60*60*1000); // +3h
+            
+            document.getElementById('windowStart').value = start.toISOString().slice(0, 16);
+            document.getElementById('windowEnd').value = end.toISOString().slice(0, 16);
+        });
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const data = {
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+                buildingId: buildingId
+            };
+
+            try {
+                const response = await fetch('/api/resident/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    authToken = result.token;
+                    currentUser = result.resident;
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    showDashboard();
+                } else {
+                    alert('Erro: ' + result.error);
+                }
+            } catch (error) {
+                alert('Erro: ' + error.message);
+            }
+        });
+
+        // Gerar QR Code
+        document.getElementById('qrForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const turnstileId = document.getElementById('turnstileSelect').value;
+            if (!turnstileId) {
+                alert('Por favor, selecione uma catraca');
+                return;
+            }
+            
+            const data = {
+                guestName: document.getElementById('guestName').value,
+                turnstileId: turnstileId,
+                windowStart: document.getElementById('windowStart').value + ':00.000Z',
+                windowEnd: document.getElementById('windowEnd').value + ':00.000Z',
+                maxUses: parseInt(document.getElementById('maxUses').value)
+            };
+
+            try {
+                const response = await fetch('/api/resident/qrcode', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('guestName').textContent = document.getElementById('guestName').value;
+                    document.getElementById('expiresAt').textContent = new Date(result.expiresAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
+                    document.getElementById('qrImage').src = result.qrCodeImage;
+                    document.getElementById('qrResult').classList.remove('hidden');
+                    
+                    // Salvar dados para download
+                    window.currentQRData = {
+                        image: result.qrCodeImage,
+                        guestName: document.getElementById('guestName').value,
+                        expiresAt: result.expiresAt
+                    };
+                    
+                    document.getElementById('qrForm').reset();
+                } else {
+                    alert('Erro: ' + result.error);
+                }
+            } catch (error) {
+                alert('Erro: ' + error.message);
+            }
+        });
+
+        function showDashboard() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('dashboardSection').classList.remove('hidden');
+            
+            if (currentUser) {
+                document.getElementById('userInfo').innerHTML = `
+                    <h3>Bem-vindo, ${currentUser.name}!</h3>
+                    <p><strong>Apartamento:</strong> ${currentUser.apartment}</p>
+                    <p><strong>Prédio:</strong> ${currentUser.buildingId?.name || 'N/A'}</p>
+                `;
+            }
+            
+            loadTurnstiles();
+        }
+        
+        // Carregar catracas disponíveis
+        async function loadTurnstiles() {
+            try {
+                const response = await fetch('/api/resident/turnstiles', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                const turnstiles = await response.json();
+                const select = document.getElementById('turnstileSelect');
+                
+                if (response.ok && turnstiles.length > 0) {
+                    select.innerHTML = '<option value="">Selecione uma catraca</option>';
+                    
+                    turnstiles.forEach(turnstile => {
+                        const option = document.createElement('option');
+                        option.value = turnstile.id;
+                        option.textContent = turnstile.name;
+                        select.appendChild(option);
+                    });
+                    
+                    document.getElementById('generateBtn').disabled = false;
+                } else {
+                    select.innerHTML = '<option value="">Nenhuma catraca disponível</option>';
+                    document.getElementById('generateBtn').disabled = true;
+                    alert('Nenhuma catraca disponível para este prédio. Entre em contato com a administração.');
+                }
+            } catch (error) {
+                console.error('Erro ao carregar catracas:', error);
+                document.getElementById('turnstileSelect').innerHTML = '<option value="">Erro ao carregar catracas</option>';
+                document.getElementById('generateBtn').disabled = true;
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            authToken = null;
+            currentUser = null;
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('dashboardSection').classList.add('hidden');
+            document.getElementById('qrResult').classList.add('hidden');
+        }
+
+        function downloadQRCode() {
+            if (!window.currentQRData) return;
+            
+            const link = document.createElement('a');
+            link.download = `qrcode-${window.currentQRData.guestName.replace(/\s+/g, '-')}.png`;
+            link.href = window.currentQRData.image;
+            link.click();
+        }
+
+
+    </script>
+</body>
+</html>

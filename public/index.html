@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema QR Code - Catracas</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        .menu { display: flex; flex-direction: column; gap: 20px; margin-top: 30px; }
+        .menu-item { padding: 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; text-align: center; font-size: 18px; }
+        .menu-item:hover { background: #0056b3; }
+        .admin { background: #dc3545; }
+        .admin:hover { background: #c82333; }
+        .resident { background: #28a745; }
+        .resident:hover { background: #1e7e34; }
+        .turnstile { background: #ffc107; color: #212529; }
+        .turnstile:hover { background: #e0a800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="text-align: right; margin-bottom: 10px;">
+            <button onclick="clearStorage()" style="background: #dc3545; color: white; padding: 5px 10px; border: none; border-radius: 3px; font-size: 12px; cursor: pointer;">🗑️ Limpar Cache</button>
+        </div>
+        <h1>Sistema QR Code para Catracas</h1>
+        <p style="text-align: center; color: #666;">Selecione um prédio ou acesse como administrador:</p>
+        
+        <div class="menu">
+            <a href="/admin" class="menu-item admin">🏢 Administrador</a>
+            <a href="/status" class="menu-item" style="background: #17a2b8;">🔍 Status dos Serviços</a>
+        </div>
+        
+        <div id="buildingsList" class="menu" style="margin-top: 30px;">
+            <p style="text-align: center; color: #666;">Carregando prédios...</p>
+        </div>
+    </div>
+    
+    <script>
+        // Verificar status dos serviços
+        async function checkServices() {
+            try {
+                const response = await fetch('/api/services/status');
+                return await response.json();
+            } catch (e) {
+                return { qrManager: false, turnstile: false, frontend: true };
+            }
+        }
+        
+        // Carregar lista de prédios
+        document.addEventListener('DOMContentLoaded', async function() {
+            const services = await checkServices();
+            
+            try {
+                const response = await fetch('/api/buildings');
+                const buildings = await response.json();
+                
+                const buildingsList = document.getElementById('buildingsList');
+                
+                if (buildings.length > 0) {
+                    buildingsList.innerHTML = '<h3 style="text-align: center; margin-bottom: 20px;">Prédios Disponíveis:</h3>';
+                    
+                    // Mostrar avisos de serviços indisponíveis
+                    if (!services.qrManager || !services.turnstile) {
+                        const warningDiv = document.createElement('div');
+                        warningDiv.style.cssText = 'background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #856404;';
+                        let warnings = [];
+                        if (!services.qrManager) warnings.push('⚠️ QR Manager indisponível - geração de QR desabilitada');
+                        if (!services.turnstile) warnings.push('⚠️ Catraca indisponível - interface desabilitada');
+                        warningDiv.innerHTML = warnings.join('<br>');
+                        buildingsList.appendChild(warningDiv);
+                    }
+                    
+                    buildings.forEach(building => {
+                        const buildingDiv = document.createElement('div');
+                        const residentLink = services.qrManager ? 
+                            `<a href="/resident?building=${building._id}" class="menu-item resident" style="flex: 1;">🏠 Morador</a>` :
+                            `<span class="menu-item" style="flex: 1; background: #6c757d; cursor: not-allowed;">🏠 Morador (Indisponível)</span>`;
+                        
+                        const turnstileLink = services.turnstile ? 
+                            `<a href="/turnstile?building=${building._id}" class="menu-item turnstile" style="flex: 1;">🚪 Catraca</a>` :
+                            `<span class="menu-item" style="flex: 1; background: #6c757d; cursor: not-allowed; color: white;">🚪 Catraca (Indisponível)</span>`;
+                        
+                        buildingDiv.innerHTML = `
+                            <h4 style="margin: 20px 0 10px 0; text-align: center;">${building.name}</h4>
+                            <div style="display: flex; gap: 10px;">
+                                ${residentLink}
+                                ${turnstileLink}
+                            </div>
+                        `;
+                        buildingsList.appendChild(buildingDiv);
+                    });
+                } else {
+                    buildingsList.innerHTML = '<p style="text-align: center; color: #666;">Nenhum prédio cadastrado</p>';
+                }
+            } catch (error) {
+                document.getElementById('buildingsList').innerHTML = '<p style="text-align: center; color: #dc3545;">Erro ao carregar prédios</p>';
+            }
+        });
+        
+        function clearStorage() {
+            localStorage.clear();
+            sessionStorage.clear();
+            alert('Cache limpo com sucesso!');
+            location.reload();
+        }
+    </script>
+</body>
+</html>
