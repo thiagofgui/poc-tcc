@@ -84,6 +84,7 @@
                         <th>Tenant ID</th>
                         <th>Status</th>
                         <th>Catracas</th>
+                        <th>Moradores</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -91,54 +92,6 @@
             </table>
         </div>
 
-        <!-- Cadastro de Moradores -->
-        <div class="section">
-            <h2>Cadastrar Morador</h2>
-            <form id="residentForm">
-                <div class="form-group">
-                    <label>Nome:</label>
-                    <input type="text" id="residentName" required>
-                </div>
-                <div class="form-group">
-                    <label>Email:</label>
-                    <input type="email" id="residentEmail" required>
-                </div>
-                <div class="form-group">
-                    <label>Senha:</label>
-                    <input type="password" id="residentPassword" required>
-                </div>
-                <div class="form-group">
-                    <label>Apartamento:</label>
-                    <input type="text" id="apartment" required>
-                </div>
-                <div class="form-group">
-                    <label>Prédio:</label>
-                    <select id="buildingSelect" required>
-                        <option value="">Selecione um prédio</option>
-                    </select>
-                </div>
-                <button type="submit">Cadastrar Morador</button>
-            </form>
-        </div>
-
-        <!-- Lista de Moradores -->
-        <div class="section">
-            <h2>Moradores Cadastrados</h2>
-            <table id="residentsTable">
-                <thead>
-                    <tr>
-                        <th>Nome</th>
-                        <th>Email</th>
-                        <th>Apartamento</th>
-                        <th>Prédio</th>
-                        <th>Status</th>
-                        <th>QR Codes Ativos</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        
         <button onclick="logout()" style="background: #dc3545; margin-top: 20px;" class="hidden" id="logoutBtn">Sair</button>
         </div>
         
@@ -240,6 +193,56 @@
                 <div id="qrCodesList"></div>
             </div>
         </div>
+        
+        <!-- Modal de Moradores do Prédio -->
+        <div id="residentsModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeResidentsModal()">&times;</span>
+                <h2 id="residentsModalTitle">Gerenciar Moradores</h2>
+                
+                <!-- Cadastro de Morador -->
+                <div class="section">
+                    <h3>Cadastrar Novo Morador</h3>
+                    <form id="residentForm">
+                        <div class="form-group">
+                            <label>Nome:</label>
+                            <input type="text" id="residentName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email:</label>
+                            <input type="email" id="residentEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Senha:</label>
+                            <input type="password" id="residentPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Apartamento:</label>
+                            <input type="text" id="apartment" required>
+                        </div>
+                        <button type="submit">Cadastrar Morador</button>
+                    </form>
+                </div>
+                
+                <!-- Lista de Moradores do Prédio -->
+                <div class="section">
+                    <h3>Moradores Cadastrados</h3>
+                    <table id="buildingResidentsTable">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Email</th>
+                                <th>Apartamento</th>
+                                <th>Status</th>
+                                <th>QR Codes</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -288,7 +291,6 @@
             document.getElementById('dashboardSection').classList.remove('hidden');
             document.getElementById('logoutBtn').classList.remove('hidden');
             loadBuildings();
-            loadResidents();
         }
         
         function logout() {
@@ -332,16 +334,36 @@
             }
         });
 
-        // Cadastrar morador
+        // Gerenciar moradores do prédio
+        let currentBuildingIdForResidents = null;
+        
+        function manageResidents(buildingId, buildingName) {
+            currentBuildingIdForResidents = buildingId;
+            document.getElementById('residentsModalTitle').textContent = `Moradores - ${buildingName}`;
+            document.getElementById('residentsModal').style.display = 'block';
+            loadBuildingResidents();
+        }
+        
+        function closeResidentsModal() {
+            document.getElementById('residentsModal').style.display = 'none';
+            currentBuildingIdForResidents = null;
+        }
+        
+        // Cadastrar morador no prédio atual
         document.getElementById('residentForm').addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            if (!currentBuildingIdForResidents) {
+                alert('Erro: Nenhum prédio selecionado');
+                return;
+            }
             
             const data = {
                 name: document.getElementById('residentName').value,
                 email: document.getElementById('residentEmail').value,
                 password: document.getElementById('residentPassword').value,
                 apartment: document.getElementById('apartment').value,
-                buildingId: document.getElementById('buildingSelect').value
+                buildingId: currentBuildingIdForResidents
             };
 
             try {
@@ -357,7 +379,7 @@
                 if (response.ok) {
                     alert('Morador cadastrado com sucesso!');
                     document.getElementById('residentForm').reset();
-                    loadResidents();
+                    loadBuildingResidents();
                 } else {
                     alert('Erro ao cadastrar morador');
                 }
@@ -377,9 +399,6 @@
                 const tbody = document.querySelector('#buildingsTable tbody');
                 tbody.innerHTML = '';
                 
-                const select = document.getElementById('buildingSelect');
-                select.innerHTML = '<option value="">Selecione um prédio</option>';
-                
                 buildings.forEach(building => {
                     // Tabela
                     const row = tbody.insertRow();
@@ -396,6 +415,9 @@
                             <button onclick="manageTurnstiles('${building._id}', '${building.name}')">Gerenciar</button>
                         </td>
                         <td>
+                            <button onclick="manageResidents('${building._id}', '${building.name}')" style="background: #17a2b8;">Gerenciar</button>
+                        </td>
+                        <td>
                             <button onclick="editBuilding('${building._id}', '${building.name}', '${building.address}', '${building.tenantId}', ${building.isActive !== false})" style="background: #ffc107; color: #212529;">Editar</button>
                             <button onclick="toggleBuildingStatus('${building._id}', ${building.isActive !== false})" style="background: ${building.isActive !== false ? '#dc3545' : '#28a745'}; margin-left: 5px;">
                                 ${building.isActive !== false ? 'Desativar' : 'Ativar'}
@@ -403,51 +425,53 @@
                         </td>
                     `;
                     
-                    // Select
-                    const option = document.createElement('option');
-                    option.value = building._id;
-                    option.textContent = building.name;
-                    select.appendChild(option);
+
                 });
             } catch (error) {
                 console.error('Erro ao carregar prédios:', error);
             }
         }
 
-        // Carregar moradores
-        async function loadResidents() {
+        // Carregar moradores do prédio atual
+        async function loadBuildingResidents() {
+            if (!currentBuildingIdForResidents) return;
+            
             try {
-                const response = await fetch('/api/admin/residents', {
+                const response = await fetch(`/api/admin/buildings/${currentBuildingIdForResidents}/residents`, {
                     headers: { 'Authorization': `Bearer ${adminToken}` }
                 });
-                const residents = await response.json();
                 
-                const tbody = document.querySelector('#residentsTable tbody');
+                const residents = await response.json();
+                const tbody = document.querySelector('#buildingResidentsTable tbody');
                 tbody.innerHTML = '';
                 
-                residents.forEach(resident => {
+                if (response.ok && residents.length > 0) {
+                    residents.forEach(resident => {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td>${resident.name}</td>
+                            <td>${resident.email}</td>
+                            <td>${resident.apartment}</td>
+                            <td>
+                                <span style="color: ${resident.isActive !== false ? '#28a745' : '#dc3545'}">
+                                    ${resident.isActive !== false ? 'Ativo' : 'Inativo'}
+                                </span>
+                            </td>
+                            <td>
+                                <button onclick="showQRCodesInline('${resident._id}', '${resident.name}')" style="background: #17a2b8; font-size: 12px; padding: 5px 10px;">Ver QR Codes</button>
+                            </td>
+                            <td>
+                                <button onclick="editBuildingResident('${resident._id}', '${resident.name}', '${resident.email}', '${resident.apartment}', ${resident.isActive !== false})" style="background: #ffc107; color: #212529; font-size: 12px; padding: 5px 10px;">Editar</button>
+                                <button onclick="toggleResidentStatus('${resident._id}', ${resident.isActive !== false})" style="background: ${resident.isActive !== false ? '#dc3545' : '#28a745'}; font-size: 12px; padding: 5px 10px; margin-left: 5px;">
+                                    ${resident.isActive !== false ? 'Desativar' : 'Ativar'}
+                                </button>
+                            </td>
+                        `;
+                    });
+                } else {
                     const row = tbody.insertRow();
-                    row.innerHTML = `
-                        <td>${resident.name}</td>
-                        <td>${resident.email}</td>
-                        <td>${resident.apartment}</td>
-                        <td>${resident.buildingId?.name || 'N/A'}</td>
-                        <td>
-                            <span style="color: ${resident.isActive !== false ? '#28a745' : '#dc3545'}">
-                                ${resident.isActive !== false ? 'Ativo' : 'Inativo'}
-                            </span>
-                        </td>
-                        <td>
-                            <button onclick="viewResidentQRCodes('${resident._id}', '${resident.name}')" style="background: #17a2b8;">Ver QR Codes</button>
-                        </td>
-                        <td>
-                            <button onclick="editResident('${resident._id}', '${resident.name}', '${resident.email}', '${resident.apartment}', '${resident.buildingId?._id}', ${resident.isActive !== false})" style="background: #ffc107; color: #212529;">Editar</button>
-                            <button onclick="toggleResidentStatus('${resident._id}', ${resident.isActive !== false})" style="background: ${resident.isActive !== false ? '#dc3545' : '#28a745'}; margin-left: 5px;">
-                                ${resident.isActive !== false ? 'Desativar' : 'Ativar'}
-                            </button>
-                        </td>
-                    `;
-                });
+                    row.innerHTML = '<td colspan="6" style="text-align: center; color: #666;">Nenhum morador cadastrado</td>';
+                }
             } catch (error) {
                 console.error('Erro ao carregar moradores:', error);
             }
@@ -654,40 +678,18 @@
             }
         }
         
-        // Funções de Edição de Morador
-        function editResident(id, name, email, apartment, buildingId, isActive) {
+        // Funções de Edição de Morador do Prédio
+        function editBuildingResident(id, name, email, apartment, isActive) {
             document.getElementById('editResidentId').value = id;
             document.getElementById('editResidentName').value = name;
             document.getElementById('editResidentEmail').value = email;
             document.getElementById('editApartment').value = apartment;
             
-            // Carregar prédios no select de edição
-            loadBuildingsForEdit(buildingId);
+            // Definir o prédio atual automaticamente
+            const select = document.getElementById('editBuildingSelect');
+            select.innerHTML = `<option value="${currentBuildingIdForResidents}" selected>Prédio Atual</option>`;
+            
             document.getElementById('editResidentModal').style.display = 'block';
-        }
-        
-        async function loadBuildingsForEdit(selectedBuildingId) {
-            try {
-                const response = await fetch('/api/admin/buildings', {
-                    headers: { 'Authorization': `Bearer ${adminToken}` }
-                });
-                const buildings = await response.json();
-                
-                const select = document.getElementById('editBuildingSelect');
-                select.innerHTML = '<option value="">Selecione um prédio</option>';
-                
-                buildings.forEach(building => {
-                    const option = document.createElement('option');
-                    option.value = building._id;
-                    option.textContent = building.name;
-                    if (building._id === selectedBuildingId) {
-                        option.selected = true;
-                    }
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Erro ao carregar prédios:', error);
-            }
         }
         
         function closeEditResidentModal() {
@@ -702,7 +704,7 @@
                 name: document.getElementById('editResidentName').value,
                 email: document.getElementById('editResidentEmail').value,
                 apartment: document.getElementById('editApartment').value,
-                buildingId: document.getElementById('editBuildingSelect').value
+                buildingId: currentBuildingIdForResidents || document.getElementById('editBuildingSelect').value
             };
 
             try {
@@ -718,7 +720,9 @@
                 if (response.ok) {
                     alert('Morador atualizado com sucesso!');
                     closeEditResidentModal();
-                    loadResidents();
+                    if (currentBuildingIdForResidents) {
+                        loadBuildingResidents();
+                    }
                 } else {
                     alert('Erro ao atualizar morador');
                 }
@@ -742,7 +746,9 @@
 
                     if (response.ok) {
                         alert(`Morador ${currentStatus ? 'desativado' : 'ativado'} com sucesso!`);
-                        loadResidents();
+                        if (currentBuildingIdForResidents) {
+                            loadBuildingResidents();
+                        }
                     } else {
                         alert(`Erro ao ${action} morador`);
                     }
@@ -752,10 +758,23 @@
             }
         }
         
-        // Funções de QR Codes
-        async function viewResidentQRCodes(residentId, residentName) {
-            document.getElementById('qrCodesModalTitle').textContent = `QR Codes Ativos - ${residentName}`;
-            document.getElementById('qrCodesModal').style.display = 'block';
+        // Mostrar QR Codes inline no modal de moradores
+        async function showQRCodesInline(residentId, residentName) {
+            const row = event.target.closest('tr');
+            let qrRow = row.nextElementSibling;
+            
+            // Se já existe uma linha de QR Codes, remove
+            if (qrRow && qrRow.classList.contains('qr-codes-row')) {
+                qrRow.remove();
+                return;
+            }
+            
+            // Criar nova linha para QR Codes
+            qrRow = document.createElement('tr');
+            qrRow.classList.add('qr-codes-row');
+            qrRow.innerHTML = '<td colspan="6" style="padding: 0; background: #f8f9fa;"><div id="qr-inline-' + residentId + '" style="padding: 15px;">Carregando QR Codes...</div></td>';
+            
+            row.parentNode.insertBefore(qrRow, row.nextSibling);
             
             try {
                 const response = await fetch(`/api/admin/residents/${residentId}/qrcodes`, {
@@ -763,10 +782,11 @@
                 });
                 
                 const qrCodes = await response.json();
-                const container = document.getElementById('qrCodesList');
+                const container = document.getElementById('qr-inline-' + residentId);
                 
                 if (response.ok && qrCodes.length > 0) {
-                    let html = '<table style="width: 100%; border-collapse: collapse;"><thead><tr><th>Visitante</th><th>Válido Até</th><th>Usos</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+                    let html = `<h4 style="margin: 0 0 10px 0; color: #333;">QR Codes Ativos - ${residentName}</h4>`;
+                    html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #e9ecef;"><th style="padding: 8px;">Visitante</th><th style="padding: 8px;">Válido Até</th><th style="padding: 8px;">Usos</th><th style="padding: 8px;">Status</th><th style="padding: 8px;">Ações</th></tr></thead><tbody>';
                     
                     qrCodes.forEach(qr => {
                         const expiresAt = new Date(qr.windowEnd).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
@@ -774,12 +794,12 @@
                         
                         html += `
                             <tr style="border-bottom: 1px solid #ddd;">
-                                <td style="padding: 10px;">${qr.visitName}</td>
-                                <td style="padding: 10px;">${expiresAt}</td>
-                                <td style="padding: 10px;">${qr.usedCount}/${qr.maxUses}</td>
-                                <td style="padding: 10px; color: ${statusColor};">${qr.status}</td>
-                                <td style="padding: 10px;">
-                                    <button onclick="revokeQRCode('${qr.jti}')" class="btn-danger" style="font-size: 12px; padding: 5px 10px;">Revogar</button>
+                                <td style="padding: 8px;">${qr.visitName}</td>
+                                <td style="padding: 8px;">${expiresAt}</td>
+                                <td style="padding: 8px;">${qr.usedCount}/${qr.maxUses}</td>
+                                <td style="padding: 8px; color: ${statusColor};">${qr.status}</td>
+                                <td style="padding: 8px;">
+                                    <button onclick="revokeQRCode('${qr.jti}')" class="btn-danger" style="font-size: 10px; padding: 3px 8px;">Revogar</button>
                                 </td>
                             </tr>
                         `;
@@ -788,10 +808,10 @@
                     html += '</tbody></table>';
                     container.innerHTML = html;
                 } else {
-                    container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Nenhum QR Code ativo encontrado</p>';
+                    container.innerHTML = `<h4 style="margin: 0 0 10px 0; color: #333;">QR Codes Ativos - ${residentName}</h4><p style="text-align: center; color: #666; margin: 0;">Nenhum QR Code ativo encontrado</p>`;
                 }
             } catch (error) {
-                document.getElementById('qrCodesList').innerHTML = '<p style="text-align: center; color: #dc3545; padding: 20px;">Erro ao carregar QR Codes</p>';
+                document.getElementById('qr-inline-' + residentId).innerHTML = `<h4 style="margin: 0 0 10px 0; color: #333;">QR Codes Ativos - ${residentName}</h4><p style="text-align: center; color: #dc3545; margin: 0;">Erro ao carregar QR Codes</p>`;
             }
         }
         
@@ -809,11 +829,9 @@
 
                     if (response.ok) {
                         alert('QR Code revogado com sucesso!');
-                        // Recarregar a lista
-                        const modal = document.getElementById('qrCodesModal');
-                        if (modal.style.display === 'block') {
-                            // Encontrar o ID do morador atual (seria melhor armazenar)
-                            location.reload(); // Por simplicidade, recarregar a página
+                        // Recarregar moradores do prédio para atualizar QR Codes
+                        if (currentBuildingIdForResidents) {
+                            loadBuildingResidents();
                         }
                     } else {
                         alert('Erro ao revogar QR Code');
@@ -877,11 +895,14 @@
         
         // Fechar modais clicando fora
         window.onclick = function(event) {
-            const modals = ['turnstileModal', 'editBuildingModal', 'editResidentModal', 'qrCodesModal'];
+            const modals = ['turnstileModal', 'editBuildingModal', 'editResidentModal', 'qrCodesModal', 'residentsModal'];
             modals.forEach(modalId => {
                 const modal = document.getElementById(modalId);
                 if (event.target === modal) {
                     modal.style.display = 'none';
+                    if (modalId === 'residentsModal') {
+                        currentBuildingIdForResidents = null;
+                    }
                 }
             });
         }

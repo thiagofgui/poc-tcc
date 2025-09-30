@@ -137,12 +137,31 @@ router.get('/residents', authMiddleware, async (req, res) => {
   }
 });
 
+// Listar moradores de um prédio específico
+router.get('/buildings/:id/residents', authMiddleware, async (req, res) => {
+  try {
+    const residents = await Resident.find({ buildingId: req.params.id }).populate('buildingId');
+    res.json(residents);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.put('/residents/:id', authMiddleware, async (req, res) => {
   try {
     const resident = await Resident.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('buildingId');
     res.json(resident);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+router.delete('/residents/:id', authMiddleware, async (req, res) => {
+  try {
+    await Resident.findByIdAndDelete(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

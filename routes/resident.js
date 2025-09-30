@@ -19,7 +19,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ id: resident._id }, process.env.JWT_SECRET);
     res.json({ token, resident });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
@@ -36,7 +36,7 @@ router.get('/turnstiles', async (req, res) => {
     
     res.json(response.data);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: 'Erro ao carregar catracas' });
   }
 });
 
@@ -82,7 +82,13 @@ router.post('/qrcode', async (req, res) => {
       qrCodeImage
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    if (error.response && error.response.data) {
+      res.status(error.response.status || 400).json({ 
+        error: error.response.data.message || error.response.data.error || error.message 
+      });
+    } else {
+      res.status(400).json({ error: 'Erro ao gerar QR Code' });
+    }
   }
 });
 
