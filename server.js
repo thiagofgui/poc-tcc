@@ -36,13 +36,15 @@ app.get('/api/services/status', async (req, res) => {
   
   // Check QR Manager
   try {
-    const response = await fetch('http://localhost:8000/health', { timeout: 3000 });
+    const qrManagerUrl = process.env.QR_MANAGER_URL || 'http://localhost:8000';
+    const response = await fetch(`${qrManagerUrl}/health`, { timeout: 3000 });
     if (response.ok) services.qrManager = true;
   } catch (e) {}
   
   // Check Turnstile
   try {
-    const response = await fetch('http://localhost:8001/health', { timeout: 3000 });
+    const turnstileUrl = process.env.TURNSTILE_SERVICE_URL || 'http://localhost:8001';
+    const response = await fetch(`${turnstileUrl}/health`, { timeout: 3000 });
     if (response.ok) services.turnstile = true;
   } catch (e) {}
   

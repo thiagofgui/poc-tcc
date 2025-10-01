@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  poc-frontend:
+    build: .
+    container_name: poc-frontend
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+      - MONGODB_URI=${MONGODB_URI}
+      - QR_MANAGER_URL=${QR_MANAGER_URL}
+      - TURNSTILE_SERVICE_URL=${TURNSTILE_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}

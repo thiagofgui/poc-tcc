@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  poc-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: poc-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - PORT=8002
+      - MONGODB_URI=${MONGODB_URI}
+      - QR_MANAGER_URL=${QR_MANAGER_URL}
+      - TURNSTILE_SERVICE_URL=${TURNSTILE_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
